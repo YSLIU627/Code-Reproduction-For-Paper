@@ -10,12 +10,12 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
-
-
-
 ##1. The optimization target and their dual gap
 
 ### Lasso
+
+$\bar{g}_{i}^{*}\left(u_{i}\right)=\max _{\alpha_{i}:\left|\alpha_{i}\right| \leq B} u_{i} \alpha_{i}-\lambda\left|\alpha_{i}\right|=B\left[\left|u_{i}\right|-\lambda\right]_{+}$
+
 ```{r}
 positive <- function(x){
   if(x >= 0){
@@ -24,15 +24,21 @@ positive <- function(x){
   return(0)
 }
 
-lasso.loss <- function(alpha,lambda){
+lasso.subgrad <- function(alpha,lambda){
   n <- length(alpha)
-  l1 <- 1/n
-  l2 <- 1*lambda/2
+  
+  return()
 }
 
-lasso.gap <- function(alpha,lambda,B,w,A){
+lasso.gap <- function(alpha,lambda,B,w,A,demension = 1){
   # A is a matrix
-  sum(B*positive(alpha[i]%*% w- lambda)+lambda*abs(alp))
+  i <- demension
+  return(B*positive(t(A[,i])%*% w- lambda)+lambda*abs(alpha[i])+
+           alpha[i]*t(A[,i])%*% w)
+}
+
+lasso.dualres <- function(alpha,lambda,w,A,demension = i){
+  # min
 }
 
 
@@ -40,16 +46,29 @@ lasso.gap <- function(alpha,lambda,B,w,A){
 ```
 
 ### Hinge-Loss SVM
+
+$\min _{\boldsymbol{\alpha} \in \mathbb{R}^{n}} \mathcal{O}_{A}(\boldsymbol{\alpha}):=\frac{1}{n} \sum_{i=1}^{n} \varphi_{i}^{*}\left(-\alpha_{i}\right)+\frac{\lambda}{2}\left\|\frac{1}{\lambda n} \sum_{i=1}^{n} \alpha_{i} \boldsymbol{a}_{i}\right\|_{2}^{2}$
+
+
 ```{r}
 svm.loss <- function(alpha,lambda){
   n <- length(alpha)
-  l1 <- 1/n
-  l2 <- 1*lambda/2
+  
 }
 
-svm.gap <- function(alpha,lambda,B,w,A){
+svm.gap <- function(alpha,lambda,B,w,A,y,demension = 1){
   # A is a matrix
-  sum(B*positive(alpha[i]%*% w- lambda)+lambda*abs(alp))
+  i <- demension
+  n <- length(alpha)
+  g_conj <- function(input,y){
+    return(input*y/n)
+  }
+  g <- function(input,y){
+    # Not certain
+    # alpha_i * y_i in [0,1]
+    return(input * y)
+  }
+  return(g_conj(-t(A[,i],y[i])%*% w)+ g(alpha[i],y[i])+alpha[i]* t(A[,i]) %*%w)
 }
 
 
@@ -61,31 +80,87 @@ svm.gap <- function(alpha,lambda,B,w,A){
 ###2.1 Gap-wise
 ```{r}
 
-
+sample.gapwise <- function(alpha,loss.gap,...){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  
+  for (i in 1:n){
+    p[i] <- loss.gap(alpha = alpha,demension = i)
+  }
+  psum <- sum(p) 
+  p[i] <- p[i]/psum
+  return(p)
+}
 
 ```
 
 ###2.2 Adaptive
 
+```{r}
+sample.ada <- function(alpha,loss.dualres,...){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  second_term <- numeric(length = n)
+  sigma <- 0.5
+  m <- n
+  for (i in 1:n){
+    k <- abs(loss.dualres(alpha,demension = i))
+    if( k == 0){
+      p[i] <- 0
+      m <- m-1
+      break
+    }
+    second_term[i] <- k*norm(A[,i],type ="O")
+  }
+  second_term <- second_term/sum(second_term)
+  for (i in 1:n){
+    if (p[i] > 0){
+      p[i] <- sigma/m + second_term*(1-sigma)
+      }
+  }
+  return(p)
+}
+
+
+```
+
+
 ###2.3 Uniform
+
+```{r}
+sample.uniform <- function(alpha){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  for (i in 1:n){
+    p[i] <- 1/n
+  }
+  return(p)
+}
+
+```
+
+
 
 
 ##3.Coordinate descdent
 
 ```{r}
 
-CD <- function(alpha_0 =0,max_iter,sample,loss,loss.grad,w_func,x,y)
+CD <- function(alpha_0 =0,max_iter =1000,sample,loss,loss.subgrad,w_func,A,y)
   {
-  # x,y are given data
+  # A,y are given data
+  record.gap <- numeric(length = max_iter)
   alpha <- alpha_0
   w <- w_func(alpha)
   iter <- 0
   while(iter < max_iter){
-  direction <- sample(alpha,w,x,y)
+  direction <- sample(alpha = alpha,w =w,A=A,y=y,...)
   # direction is a vector like alpha with only one none zero dim
-  update <- direction * loss.grad(alpha,x,y,...)
-  alpha <- alpha + update
+  update <- direction * loss.subgrad(alpha =alpha,A =A,y=y,...)
+  alpha <- alpha - update
   w <- w_func(alpha)
+  # What we need to add is a gap recorder
+  
   }
 }
 
@@ -105,7 +180,7 @@ Collect data
 ```
 
 
-exmaple
+example
 ```{r}
 
 ```
