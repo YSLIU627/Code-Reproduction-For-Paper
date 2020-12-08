@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
-##1. The optimization target and their dual gap
+##1. The optimization target and their dual gap and dual residual
 
 ### Lasso
 
@@ -24,13 +24,39 @@ positive <- function(x){
   return(0)
 }
 
-lasso.subgrad <- function(alpha,lambda){
-  n <- length(alpha)
-  
-  return()
+lasso.w_func <- function(alpha,lambda,A,...){
+  return(2*t(A)%*%(A %*% alpha - y))
 }
 
-lasso.gap <- function(alpha,lambda,B,w,A,demension = 1){
+lasso.subgrad <- function(alpha,lambda,A,demension = 1,...){
+  i <- demension
+  n <- length(alpha)
+  # First calculate the subgrad of |alpha|, sub1
+  if (alpha[i] > 0 ){
+    sub1 <- alpha[i]/norm(alpha,type = "O")
+  }
+  else if(alpha[i] < 0){
+    sub1 <- alpha[i]/norm(alpha,type = "O")
+  }
+  else {
+    seed <- runif(1,-1,1)
+    sub1 <- lambda*seed * alpha[i]/norm(alpha,type = "O")
+  }
+  
+  # Then calculate the grad of ||A\alpha -y||^2
+  term <- vector(length =n)
+  for (s in 1:n){
+    term <- term + alpha[s]*A[s]
+  }
+  
+  sub2 <- t(A[,i]) %*% term + t(term) %*% A[,i] 
+            - t(y) %*% A[,i] - t(A[,i])%*% y
+  
+  subgrad = sub1 +sub2
+  return(subgrad)
+}
+
+lasso.gap <- function(alpha,lambda = 0.5,B,w,A,demension = 1){
   # A is a matrix
   i <- demension
   return(B*positive(t(A[,i])%*% w- lambda)+lambda*abs(alpha[i])+
@@ -38,7 +64,41 @@ lasso.gap <- function(alpha,lambda,B,w,A,demension = 1){
 }
 
 lasso.dualres <- function(alpha,lambda,w,A,demension = i){
-  # min
+  # first calculate the subgrad of g_i^*
+  i <- demension
+  flag <-  0
+  eps <- 1e-5
+  input <- -t(A[,i])%*%w
+  if (input > eps && input <= B){
+    g_sub <- lambda *input
+  }
+  else if(input < -eps && input >= -B){
+    g_sub <- -lambda *input
+  }
+  else if(abs(input) <B){
+    g_sub_right <- lambda * abs(input)
+    g_sub_left  <- -lambda * abs(input)
+    flag <- 1 
+    #g_sub is an interval
+  }
+  else {
+    g_sub <- Inf
+  }
+    
+  # When flag ==0 ,subgrad is grad, otherwise is a interval
+  if (flag == 0){
+      return (abs(alpha[i])-g_sub)
+  }
+  #  subgrad is a interval
+  if (abs(alpha[i]) <= g_sub_right){
+    return (0)
+  }
+  else {
+    return (min(abs(alpha[i]-g_sub_right),abs(alpha[i]-g_sub_left) ))
+    # Return the closet distance from the interval
+  }
+  
+  
 }
 
 
@@ -102,17 +162,20 @@ sample.ada <- function(alpha,loss.dualres,...){
   p <- numeric(length = n)
   second_term <- numeric(length = n)
   sigma <- 0.5
-  m <- n
+  eps <- 1e-5
   for (i in 1:n){
+    m <- n
     k <- abs(loss.dualres(alpha,demension = i))
-    if( k == 0){
+    if( k < eps){
       p[i] <- 0
       m <- m-1
       break
     }
-    second_term[i] <- k*norm(A[,i],type ="O")
+    second_term[i] <- k*norm(A[,i],type ="F")
   }
+  
   second_term <- second_term/sum(second_term)
+  
   for (i in 1:n){
     if (p[i] > 0){
       p[i] <- sigma/m + second_term*(1-sigma)
@@ -128,7 +191,7 @@ sample.ada <- function(alpha,loss.dualres,...){
 ###2.3 Uniform
 
 ```{r}
-sample.uniform <- function(alpha){
+sample.uniform <- function(alpha,...){
   n <- length(alpha)
   p <- numeric(length = n)
   for (i in 1:n){
@@ -139,31 +202,49 @@ sample.uniform <- function(alpha){
 
 ```
 
+###2.4 Importance Sampling
 
+```{r}
+sample.imp <- function(alpha,A,...){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  for (i in 1:n){
+    p[i] <- norm(A[,i],type = "F")
+  }
+  p = p/sum(p)
+  return(p)
+}
+
+
+```
 
 
 ##3.Coordinate descdent
 
 ```{r}
 
-CD <- function(alpha_0 =0,max_iter =1000,sample,loss,loss.subgrad,w_func,A,y)
+CD <- function(alpha_0 =0,max_iter =1000,sample_p,loss,loss.subgrad,w_func,A,y)
   {
+  n <- length(alpha_0)
   # A,y are given data
   record.gap <- numeric(length = max_iter)
   alpha <- alpha_0
   w <- w_func(alpha)
   iter <- 0
   while(iter < max_iter){
-  direction <- sample(alpha = alpha,w =w,A=A,y=y,...)
-  # direction is a vector like alpha with only one none zero dim
-  update <- direction * loss.subgrad(alpha =alpha,A =A,y=y,...)
+  B <- B
+  # Note that B maybe need updating
+  i <- sample(1:n,prob = sample_p(alpha = alpha,w =w,A=A,y=y,...))
+  # direction is a sample prob vector like alpha with only one none zero dim
+  direction = vector(length = n)
+  direction[i] = 1
+  
+  update <- direction * loss.subgrad(alpha =alpha,dimension =i ,A =A,y=y,...)
   alpha <- alpha - update
-  w <- w_func(alpha)
-  # What we need to add is a gap recorder
+  w <- w_func(alpha,...)
   
   }
 }
-
 
 
 ```
@@ -175,7 +256,6 @@ CD <- function(alpha_0 =0,max_iter =1000,sample,loss,loss.subgrad,w_func,A,y)
 
 Collect data
 ```{r}
-
 
 ```
 
