@@ -23,12 +23,18 @@ positive <- function(x){
   }
   return(0)
 }
+lasso.loss <- function(A,alpha,y) {
+  # 返回loss函数的值
+  return (norm(A%*%alpha - y,type = "2")+norm("alpha",type = "O"))
+}
 
 lasso.w_func <- function(alpha,lambda,A,...){
+  #返回w的函数值
   return(2*t(A)%*%(A %*% alpha - y))
 }
 
 lasso.subgrad <- function(alpha,lambda,A,demension = 1,...){
+  #返回次梯度
   i <- demension
   n <- length(alpha)
   # First calculate the subgrad of |alpha|, sub1
@@ -57,6 +63,7 @@ lasso.subgrad <- function(alpha,lambda,A,demension = 1,...){
 }
 
 lasso.gap <- function(alpha,lambda = 0.5,B,w,A,demension = 1){
+  # 计算对偶gap
   # A is a matrix
   i <- demension
   return(B*positive(t(A[,i])%*% w- lambda)+lambda*abs(alpha[i])+
@@ -64,11 +71,13 @@ lasso.gap <- function(alpha,lambda = 0.5,B,w,A,demension = 1){
 }
 
 lasso.dualres <- function(alpha,lambda,w,A,demension = i){
+  #计算对偶残差
   # first calculate the subgrad of g_i^*
   i <- demension
   flag <-  0
   eps <- 1e-5
   input <- -t(A[,i])%*%w
+  # 这里的g用的是文中修改后的g拔，下面计算次梯度
   if (input > eps && input <= B){
     g_sub <- lambda *input
   }
@@ -223,26 +232,34 @@ sample.imp <- function(alpha,A,...){
 
 ```{r}
 
-CD <- function(alpha_0 =0,max_iter =1000,sample_p,loss,loss.subgrad,w_func,A,y)
+CD <- function(alpha_0 =0,max_iter =1000,sample_p,loss.subgrad,loss.dualres,loss.w_func,A,y,loss,loss.gapwise,loss.gap)
   {
+  record.gap <- list(length = max_iter)
+  record.opt <- list(length = max_iter)
   n <- length(alpha_0)
   # A,y are given data
   record.gap <- numeric(length = max_iter)
   alpha <- alpha_0
-  w <- w_func(alpha)
+  w <- loss.w_func(alpha)
   iter <- 0
   while(iter < max_iter){
-  B <- B
+  B <- 1000 #B
   # Note that B maybe need updating
   i <- sample(1:n,prob = sample_p(alpha = alpha,w =w,A=A,y=y,...))
   # direction is a sample prob vector like alpha with only one none zero dim
   direction = vector(length = n)
   direction[i] = 1
-  
-  update <- direction * loss.subgrad(alpha =alpha,dimension =i ,A =A,y=y,...)
+  update <- direction * loss.subgrad(alpha = alpha,dimension =i ,A =A,y=y,...)
   alpha <- alpha - update
-  w <- w_func(alpha,...)
-  
+  w <- loss.w_func(alpha,...)
+  # Record the result
+  gap <- 0
+  for( j in 1:n){
+    gap <- gap + loss.gap(dimension = i,...)
+  }
+  record.gap[iter] <- gap
+  record.opt[iter] <- loss(...)
+  return (list(iter,record.gap,record.opt))
   }
 }
 
@@ -256,7 +273,11 @@ CD <- function(alpha_0 =0,max_iter =1000,sample_p,loss,loss.subgrad,w_func,A,y)
 
 Collect data
 ```{r}
-
+A = matrix(c(1,1,3,5,5,7),nrow = 3,ncol =2)
+alpha = c(4,5)
+y <- A%*%alpha
+y
+CD(alpha_0 = c(0,0),max_iter = 100,A=A,y=y,sample_p = sample.gapwise,loss = lasso.loss ,loss.gap =lasso.gap ,loss.subgrad = lasso.subgrad,loss.duaresl = lasso.dualres,loss.w_func = lasso.w_func )
 ```
 
 
