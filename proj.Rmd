@@ -41,13 +41,13 @@ lasso.subgrad <- function(alpha,lambda,A,dimension,y,...){
   alpha0 <- as.matrix(alpha)
   # First calculate the subgrad of |alpha|, sub1
   if (alpha[i] > 0 ){
-    sub1 <- 1#alpha[i]/norm(alpha0,type = "O")
+    sub1 <- lambda#alpha[i]/norm(alpha0,type = "O")
   }
   else if(alpha[i] < 0){
-    sub1 <- -1#alpha[i]/norm(alpha0,type = "O")
+    sub1 <- -lambda#alpha[i]/norm(alpha0,type = "O")
   }
   else {
-    seed <- runif(1,-1,1)
+    seed <- 0#runif(1,-1,1)
     sub1 <- lambda*seed #* alpha[i]/norm(alpha0,type = "O")
   }
   
@@ -197,7 +197,7 @@ p.imp <- function(alpha,A,y,lambda,B){
   n <- length(alpha)
   p <- numeric(length = n)
   for (i in 1:n){
-    p[i] <- norm(A[,i],type = "F")
+    p[i] <- norm(as.matrix(A[,i]),type = "F")
   }
   p = p/sum(p)
   return(p)
@@ -211,17 +211,17 @@ p.imp <- function(alpha,A,y,lambda,B){
 
 ```{r}
 
-CD_each_iter <- function(sample_p,A,y,lambda,...)
+CD_each_iter <- function(sample_p,A,y,lambda,step0 = 0.1,alpha = numeric(112), ...)
   {
-  step0 <- 0.01
+  
   epoch <- dim(A)[2]
   n <- dim(A)[2]
   max_iter <- epoch*25
   record.gap <- numeric(length=25)
   gap <- numeric(n)
   # A,y are given data
-  alpha <- numeric(length = n)
-  B <- (norm(A%*%alpha - y,type = "2"))/lambda
+  
+  B <- (norm(A%*%alpha - y,type = "2"))/lambda + lambda*sum(abs(alpha))
   w <- lasso.w_func(alpha,A,y)
   iter <- 0
   while(iter < max_iter){
@@ -231,7 +231,7 @@ CD_each_iter <- function(sample_p,A,y,lambda,...)
   direction = vector(length = n)
   direction[i] = 1
   update <- direction * lasso.subgrad(alpha = alpha,dimension =i ,A =A,y=y,lambda = lambda)
-  alpha <- alpha - step0/sqrt(iter)*update
+  alpha <- alpha - step0*update/(2*sum(A[,i]^2))
   #browser()
   # Record the result
   if(iter%%epoch==0){
@@ -246,8 +246,9 @@ CD_each_iter <- function(sample_p,A,y,lambda,...)
   return (log(record.gap))
 }
 #CD_each_iter(sample_p = p.uniform,A = A.mushrooms,y = y.mushrooms,lambda = 0.05)
-CD_per_epoch <-function(sample_p,A,y,lambda, ...)
+CD_per_epoch <- function(sample_p,A,y,lambda,step0 = 0.001,...)
   {
+  
   epoch <- dim(A)[2]
   n <- dim(A)[2]
   max_iter <- epoch*25
@@ -261,24 +262,27 @@ CD_per_epoch <-function(sample_p,A,y,lambda, ...)
   p <- sample_p(alpha = alpha,A=A,y=y,lambda=lambda,B=B,...)
   while(iter < max_iter){
   iter <- iter+1
-  i <- sample(1:n,prob = p)
+  i <- sample(1:n,size = 1,prob = p)
   # direction is a sample prob vector like alpha with only one none zero dim
   direction = vector(length = n)
   direction[i] = 1
   update <- direction * lasso.subgrad(alpha = alpha,dimension =i ,A =A,y=y,lambda = lambda)
-  alpha <- alpha - update
+  alpha <- alpha - step0*update
+  #browser()
   # Record the result
   if(iter%%epoch==0){
     k <- iter/epoch
     for(j in 1:n){
-      gap[j] <- lasso.gap(alpha, lambda, B, A, j,y)
+      gap[j] <- lasso.gap(alpha, lambda, B, A, j,y=y)
     }
     record.gap[k] <- sum(gap)
     p <- sample_p(alpha = alpha,A=A,y=y,lambda=lambda,B=B,...)
+    #browser()
   }
   }
   return (log(record.gap))
 }
+
 ```
 
 
@@ -348,7 +352,30 @@ A.rcv1 <- A.rcv1[,which(cs!=0)]
 ```
 example
 ```{r}
-CD_each_iter(sample_p = p.uniform,A = A.mushrooms,y = y.mushrooms,lambda = 0.05)
+glmnet.fit<- cv.glmnet( A.mushrooms,y.mushrooms ,family = "multinomial")
+g.coef <- coef(glmnet.fit)
+
+
+```
+
+
+```{r}
+n=112
+alpha1 = numeric(n)
+for (mmm in 1:n){
+  alpha1[mmm] = runif(1,-1,-0.5)#g.coef[[1]][mmm]
+}
+sum((A.mushrooms%*%alpha1-y.mushrooms)^2)
+```
+
+```{r}
+n=112
+alpha1 = numeric(n)
+for (mmm in 1:n){
+  alpha1[mmm] = g.coef[[1]][mmm]
+}
+CD_each_iter(sample_p = p.uniform,A = A.mushrooms,y = y.mushrooms,lambda = 0.05,step0 = 1,alpha = alpha1)
+
 ```
 
 ## 5.Plot
