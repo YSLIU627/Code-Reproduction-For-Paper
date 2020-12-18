@@ -236,13 +236,11 @@ CD_each_iter <- function(sample_p,A,y,lambda,step0 = 0.1,...)
   while(iter < max_iter){
   iter <- iter+1
   i <- sample(1:n,size = 1,prob = sample_p(alpha = alpha,A=A,y=y,lambda=lambda,B=B,...))
-  # direction is a sample prob vector like alpha with only one none zero dim
-  direction = vector(length = n)
-  direction[i] = 1
-  update <- direction * lasso.subgrad(alpha = alpha,dimension =i ,A =A,y=y,lambda = lambda)
+  
+  update <- lasso.subgrad(alpha = alpha,dimension =i ,A =A,y=y,lambda = lambda)
   inverses <- max(2*sum(A[,i]**2),1)
   #inverses <- 2*sum(A[,i]**2)
-  alpha <- alpha - step0*update/inverses
+  alpha[i] <- alpha[i] - step0*update/inverses
   #alpha_ <- alpha - step0*update/inverses
   #if (lasso.loss(A,alpha_,y) < lasso.loss(A,alpha,y) ){
   #   alpha <- alpha_ 
@@ -292,13 +290,10 @@ CD_per_epoch <- function(sample_p,A,y,lambda,step0 = 0.1,...)
   while(iter < max_iter){
   iter <- iter+1
   i <- sample(1:n,size = 1,prob = p)
-  # direction is a sample prob vector like alpha with only one none zero dim
-  direction = vector(length = n)
-  direction[i] = 1
-  update <- direction * lasso.subgrad(alpha = alpha,dimension =i ,A =A,y=y,lambda = lambda)
+  update <- lasso.subgrad(alpha = alpha,dimension =i ,A =A,y=y,lambda = lambda)
   inverses <- max(2*sum(A[,i]**2),1)
   #inverses <- 2*sum(A[,i]**2)
-  alpha <- alpha - step0*update/inverses
+  alpha[i] <- alpha[i] - step0*update/inverses
   #browser()
   # Record the result
   if(iter%%epoch==0){
@@ -407,7 +402,7 @@ d = length(alpha1)
 A = A.mushrooms[1:200,]
 y = A%*%alpha1
 alpha = numeric(d)
-CD_each_iter(sample_p = p.imp,A = A,y = y,lambda = 0.05,step0 = 0.5)
+#CD_each_iter(sample_p = p.imp,A = A,y = y,lambda = 0.05,step0 = 0.5)
 ```
 
 ```{r full_data_for_degug, eval=FALSE}
@@ -417,7 +412,7 @@ CD_each_iter(sample_p = p.uniform,A = A.mushrooms,y = y.mushrooms,lambda = 0.05,
 ## 5.Plot
 
 
-```{r save_result, eval=FALSE}
+```{r save_result, eval=TRUE}
 save_result <- function(CD, name, ...){
   result.gap <- matrix(0,nrow = 5, ncol = 25)
   result.loss <- matrix(0, nrow = 5, ncol = 25)
