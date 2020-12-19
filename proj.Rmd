@@ -348,21 +348,22 @@ for(i in 1:8124){
 ```
 
 ```{r rcv1_A&y, eval=FALSE}
-set.seed(1)
-ind <- sample(1:20242, 10000)
-feature <- sample(1:50000, 1000)
+set.seed(100)
+ind <- sample(1:20242, 8000)
+feature <- sample(1:50000, 300)
 feature <- as.character(sort(feature))
 rcv1 <- rcv1[ind]
-A.rcv1 <- matrix(0,nrow = 10000, ncol = 1000)
+A.rcv1 <- matrix(0,nrow = 8000, ncol = 300)
 colnames(A.rcv1) <- feature
-y.rcv1 <- numeric(length = 10000)
+y.rcv1 <- numeric(length = 8000)
 a <- strsplit(rcv1, split = " ")
-for(i in 1:10000){
+for(i in 1:8000){
   b <- a[[i]]
   y.rcv1[i] <- as.numeric(b[1])
   b <- b[-1]
   len <- length(b)
   c <- strsplit(b,split = ":")
+  #browser()
   for(j in 1:len){
     colind <- c[[j]][1]
     if(sum(colind==feature)==1){
