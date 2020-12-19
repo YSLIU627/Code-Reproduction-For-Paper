@@ -58,12 +58,15 @@ lasso.subgrad <- function(alpha,lambda,A,dimension,y,...){
     sub1 <- lambda*seed #* alpha[i]/norm(alpha0,type = "O")
   }
   # Then calculate the grad of ||A\alpha -y||^2
-  term <- vector(length =length(A[,1]))
-  for (s in 1:n){
-    term <- term + as.vector(alpha[s]*A[,s])
-  }
-  sub2 <- t(A[,i]) %*% term + t(term) %*% A[,i] - t(y) %*% A[,i] - t(A[,i])%*% y
-  subgrad = sub1 +rowSums(sub2)
+  #term <- vector(length =length(A[,1]))
+  #for (s in 1:n){
+  #  term <- term + as.vector(alpha[s]*A[,s])
+  #}
+  #sub2 <- t(A[,i]) %*% term + t(term) %*% A[,i] - t(y) %*% A[,i] - t(A[,i])%*% y
+  term <- 2*(A%*%alpha-y)
+  term <- as.vector(term)
+  sub2 <- sum(A[,i]*term)
+  subgrad = sub1 + sub2 #rowSums(sub2)
   #browser()
   return(subgrad)
 }
