@@ -323,8 +323,8 @@ CD_per_epoch <- function(sample_p,A,y,lambda,step0 = 0.1,...)
 
 Collect data
 ```{r get_dataset}
-mushrooms <- readLines("https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/mushrooms")
-rcv1 <- readLines("rcv1_train.binary")
+#mushrooms <- readLines("https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/mushrooms")
+#rcv1 <- readLines("rcv1_train.binary")
 ionosphere <- readLines("https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/ionosphere_scale")
 ```
 Get corresponding A and y
