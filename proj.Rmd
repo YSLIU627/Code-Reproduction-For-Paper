@@ -28,9 +28,8 @@ positive <- function(x){
 ```{r lasso.loss}
 lasso.loss <- function(A,alpha,y) {
   # 返回loss函数的值
-  #return (norm(as.matrix(A%*%alpha - y),type = "2"))
+  return (norm(as.matrix(A%*%alpha - y),type = "2"))
           #+norm("alpha",type = "O"))
-  return (sqrt(sum((A%*%alpha - y)**2)))
 }
 ```
 
@@ -225,7 +224,7 @@ p.imp <- function(alpha,A,y,lambda,B){
 CD_each_iter <- function(sample_p,A,y,lambda,step0 = 0.1,...)
   {
   record_length <- 25
-  epoch <- dim(A)[2]*3
+  epoch <- dim(A)[2]
   n <- dim(A)[2]
   alpha <- numeric(n)
   max_iter <- epoch*record_length
@@ -239,9 +238,8 @@ CD_each_iter <- function(sample_p,A,y,lambda,step0 = 0.1,...)
   iter <- 0
   while(iter < max_iter){
   iter <- iter+1
-  p = sample_p(alpha = alpha,A=A,y=y,lambda=lambda,B=B,...)
-  i <- sample(1:n,size = 1,prob = p)
-  #browser()
+  i <- sample(1:n,size = 1,prob = sample_p(alpha = alpha,A=A,y=y,lambda=lambda,B=B,...))
+  
   update <- lasso.subgrad(alpha = alpha,dimension =i ,A =A,y=y,lambda = lambda)
   inverses <- max(2*sum(A[,i]**2),1)
   #inverses <- 2*sum(A[,i]**2)
@@ -266,13 +264,9 @@ CD_each_iter <- function(sample_p,A,y,lambda,step0 = 0.1,...)
     #print(lasso.loss(A = A,alpha = alpha,y = y))
     record.loss[k] <- lasso.loss(A, alpha, y)
     #browser()
-    print("gap")
-    print(gap[51])
-    print("loss")
-    print(lasso.dualres(alpha,lambda,A,51,y,B))
   }
   }
-  result <- list(dual.gap = log(record.gap), suboptimality = log(record.loss),alpha = alpha)
+  result <- list(dual.gap = log(record.gap), suboptimality = log(record.loss))
   #browser()
   return (result)
 }
@@ -330,7 +324,8 @@ CD_per_epoch <- function(sample_p,A,y,lambda,step0 = 0.1,...)
 Collect data
 ```{r get_dataset}
 mushrooms <- readLines("https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/mushrooms")
-#rcv1 <- readLines("rcv1_train.binary")
+rcv1 <- readLines("rcv1_train.binary")
+ionosphere <- readLines("https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/ionosphere_scale")
 ```
 Get corresponding A and y
 ```{r mushrooms_A&y, eval=TURE}
@@ -388,10 +383,32 @@ y.rcv1 <- y.rcv1[which(rs!=0)]
 cs <- apply(A.rcv1,2,sum)
 A.rcv1 <- A.rcv1[,which(cs!=0)]
 ```
+
+
+```{r ionosphere_A&y, eval=TURE}
+A.ionosphere <- matrix(0,nrow = 351, ncol = 34)
+y.ionosphere <- numeric(length = 351)
+a <- strsplit(ionosphere, split = " ")
+for(i in 1:351){
+  b <- a[[i]]
+  y.ionosphere[i] <- as.numeric(b[1])
+  b <- b[-1]
+  len <- length(b)
+  c <- strsplit(b,split = ":")
+  for(j in 1:len){
+    colind <- c[[j]][1]
+    val <- c[[j]][2]
+    colind <- as.numeric(colind)
+    val <- as.numeric(val)
+    A.ionosphere[i,colind] <- val
+  }
+}
+
+```
 example
 
+
 ```{r glm_try, eval=FALSE}
-require(glmnet)
 glmnet.fit<- cv.glmnet( A.mushrooms,y.mushrooms ,family = "multinomial")
 g.coef <- coef(glmnet.fit)
 n=112
@@ -405,24 +422,15 @@ alpha1 = numeric(n)
 for (mmm in 1:n){
   alpha1[mmm] = g.coef[[1]][mmm]
 }
-sum((A.mushrooms%*%alpha1-y.mushrooms)^2)
 ```
 
 
 ```{r small_data_for_debug, eval=FALSE}
-m =1
-sum((A.mushrooms%*%alpha1-y.mushrooms)^2)
-alpha3 = numeric(length = 112)
-alpha2 = rnorm(m,mean =1,sd =5)
-alpha3[50+1:51+m] = alpha2
 d = length(alpha1)
-A = A.mushrooms[201:400,]
-y = A%*%alpha3 + rnorm(200)
+A = A.mushrooms[1:200,]
+y = A%*%alpha1
 alpha = numeric(d)
-result <- CD_each_iter(sample_p = p.uniform,A = A,y = y,lambda = 0.05,step0 = 0.1)
-result$dual.gap
-result$suboptimality
-sum((alpha1-result$alpha)^2)
+#CD_each_iter(sample_p = p.imp,A = A,y = y,lambda = 0.05,step0 = 0.5)
 ```
 
 ```{r full_data_for_degug, eval=FALSE}
@@ -485,30 +493,17 @@ process_result <- function(df){
 ```
 
 ```{r}
-gap.adagap.e <- process_result(read.csv("result/epoch_adagap_rcv_gap.csv"))[-1]
-gap.uni.e <- process_result(read.csv("result/epoch_uni_rcv_gap.csv"))[-1]
-gap.imp.e <- process_result(read.csv("result/epoch_imp_rcv_gap.csv"))[-1]
-
-plot(1:25, gap.adagap.e, col = "yellow", xlab = "Epochs", ylab = "log of dual gap", type = "l",ylim = c(16,20))
-par(new = TRUE)
-plot(1:25, gap.imp.e, col = "red", xlab = "Epochs", ylab = "log of dual gap", type = "l",ylim = c(16,20))
-par(new = TRUE)
-plot(1:25, gap.uni.e, col = "blue", xlab = "Epochs", ylab = "log of dual gap", type = "l",ylim = c(16,20))
-par(new = TRUE)
-legend("topright", col = c("blue", "red", "yellow"),lty = 1, legend = c("uniform","importance", "gap-per-epoch"))
-```
-
-
-```{r}
+gap.adagap.e <- process_result(read.csv("result/epoch_adagap_gap.csv"))[-1]
+gap.uni.e <- process_result(read.csv("result/epoch_uni_gap.csv"))[-1]
+gap.imp.e <- process_result(read.csv("result/epoch_imp_gap.csv"))[-1]
 loss.adagap.e <- process_result(read.csv("result/epoch_adagap_loss.csv"))[-1]
 loss.uni.e <- process_result(read.csv("result/epoch_uni_loss.csv"))[-1]
 loss.imp.e <- process_result(read.csv("result/epoch_imp_loss.csv"))[-1]
-plot(1:25, loss.adagap.e, col = "yellow", xlab = "Epochs",, ylab = "log of subopt", type = "l",ylim=c(0.8,3.86))
+plot(1:25, gap.adagap.e, col = "yellow", xlab = "Epochs", ylab = "log of dual gap", type = "l")
 par(new = TRUE)
-plot(1:25, loss.imp.e, col = "red", xlab = "Epochs",, ylab = "log of subopt", type = "l",ylim=c(0.8,3.86))
+plot(1:25, gap.imp.e, col = "red", xlab = "Epochs", ylab = "log of dual gap", type = "l")
 par(new = TRUE)
-plot(1:25, loss.uni.e, col = "blue", xlab = "Epochs", ylab = "log of subopt", type = "l",ylim=c(0.8,3.86))
+plot(1:25, gap.uni.e, col = "blue", xlab = "Epochs", ylab = "log of dual gap", type = "l")
 par(new = TRUE)
 legend("topright", col = c("blue", "red", "yellow"),lty = 1, legend = c("uniform","importance", "gap-per-epoch"))
-
 ```

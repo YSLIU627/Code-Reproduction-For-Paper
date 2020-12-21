@@ -204,10 +204,10 @@ CD_each_iter <- function(sample_p,A,y,lambda,step0 = 0.1,...)
   p = sample_p(alpha = alpha,A=A,y=y,lambda=lambda,B=B,w,...)
   i <- sample(1:n,size = 1,prob = p)
 
-  update <- y[i]* max(0,min(1,y[i]*alpha[i]+(1-y[i]*t(A[,i])%*%w)/(sum(A[,i]**2)/(lambda*n))))
+  update <- y[i]* max(0,min(1,y[i]*alpha[i]+(1-y[i]*t(A[,i])%*%w)/(sum(A[,i]**2)/(lambda*n)))) - alpha[i]
   
-  alpha[i] <- update
-  
+  alpha[i] <- update +alpha[i]
+  w <- w + A[,i]*update/(lambda*n)
   if(iter%%epoch==0){
     k <- iter/epoch
     for(j in 1:n){
