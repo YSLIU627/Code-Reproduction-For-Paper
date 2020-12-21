@@ -322,12 +322,12 @@ CD_per_epoch <- function(sample_p,A,y,lambda,step0 = 0.1,...)
 ##4.Exmperiment
 
 Collect data
-```{r get_dataset, eval=FALSE}
+```{r get_dataset}
 mushrooms <- readLines("https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/mushrooms")
 rcv1 <- readLines("rcv1_train.binary")
 ```
 Get corresponding A and y
-```{r mushrooms_A&y, eval=FALSE}
+```{r mushrooms_A&y, eval=TURE}
 A.mushrooms <- matrix(0,nrow = 8124, ncol = 112)
 y.mushrooms <- numeric(length = 112)
 a <- strsplit(mushrooms, split = " ")
@@ -347,7 +347,7 @@ for(i in 1:8124){
 }
 ```
 
-```{r rcv1_A&y, eval=FALSE}
+```{r rcv1_A&y}
 set.seed(100)
 ind <- sample(1:20242, 8000)
 feature <- sample(1:50000, 300)
@@ -375,7 +375,7 @@ for(i in 1:8000){
 }
 ```
 remove rows and columns that are full of 0 in A.rcv1
-```{r pre_process_rcv1, eval=FALSE}
+```{r pre_process_rcv1}
 rs<-apply(A.rcv1,1,sum)
 A.rcv1 <- A.rcv1[which(rs!=0),]
 y.rcv1 <- y.rcv1[which(rs!=0)]
@@ -432,7 +432,7 @@ save_result <- function(CD, name, ...){
 }
 ```
 
-```{r collect_data_each_iter_mushrooms, eval=FALSE}
+```{r collect_data_each_iter_mushrooms}
 save_result(CD_each_iter, "uni", sample_p = p.uniform,A = A.mushrooms,y = y.mushrooms,lambda = 0.05,step0 = 1)
 save_result(CD_each_iter, "ssuni", sample_p = p.ada.uniform,A = A.mushrooms,y = y.mushrooms,lambda = 0.05,step0 = 1,sigma=1)
 save_result(CD_each_iter, "adative", sample_p = p.ada.uniform,A = A.mushrooms,y = y.mushrooms,lambda = 0.05,step0 = 1,sigma=0)
@@ -442,13 +442,13 @@ save_result(CD_each_iter, "adagap", sample_p = p.ada.gap,A = A.mushrooms,y = y.m
 ```
 
 
-```{r collect_data_per_epoch_mushrooms,  eval=FALSE}
+```{r collect_data_per_epoch_mushrooms}
 save_result(CD_per_epoch, "epoch_adagap", sample_p = p.ada.gap,A = A.mushrooms,y = y.mushrooms,lambda = 0.05,step0 = 1)
 save_result(CD_per_epoch, "epoch_imp", sample_p = p.imp,A = A.mushrooms,y = y.mushrooms,lambda = 0.05,step0 = 1)
 save_result(CD_each_iter, "epoch_uni", sample_p = p.uniform,A = A.mushrooms,y = y.mushrooms,lambda = 0.05,step0 = 1)
 ```
 
-```{r result_cv1, echo=FALSE}
+```{r result_cv1}
 #save_result(CD_each_iter, "uni_rcv", sample_p = p.uniform,A = A.rcv1,y = y.rcv1,lambda = 7e-4,step0 = 1)
 save_result(CD_each_iter, "ssuni_rcv", sample_p = p.ada.uniform,A = A.rcv1,y = y.rcv1,lambda = 7e-4,step0 = 1, sigma = 1)
 save_result(CD_each_iter, "adative_rcv", sample_p = p.ada.uniform,A = A.rcv1,y = y.rcv1,lambda = 7e-4,step0 = 1, sigma = 0)
