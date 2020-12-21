@@ -325,6 +325,7 @@ Collect data
 ```{r get_dataset}
 mushrooms <- readLines("https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/mushrooms")
 rcv1 <- readLines("rcv1_train.binary")
+ionosphere <- readLines("https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/ionosphere_scale")
 ```
 Get corresponding A and y
 ```{r mushrooms_A&y, eval=TURE}
@@ -382,7 +383,30 @@ y.rcv1 <- y.rcv1[which(rs!=0)]
 cs <- apply(A.rcv1,2,sum)
 A.rcv1 <- A.rcv1[,which(cs!=0)]
 ```
+
+
+```{r ionosphere_A&y, eval=TURE}
+A.ionosphere <- matrix(0,nrow = 351, ncol = 34)
+y.ionosphere <- numeric(length = 351)
+a <- strsplit(ionosphere, split = " ")
+for(i in 1:351){
+  b <- a[[i]]
+  y.ionosphere[i] <- as.numeric(b[1])
+  b <- b[-1]
+  len <- length(b)
+  c <- strsplit(b,split = ":")
+  for(j in 1:len){
+    colind <- c[[j]][1]
+    val <- c[[j]][2]
+    colind <- as.numeric(colind)
+    val <- as.numeric(val)
+    A.ionosphere[i,colind] <- val
+  }
+}
+
+```
 example
+
 
 ```{r glm_try, eval=FALSE}
 glmnet.fit<- cv.glmnet( A.mushrooms,y.mushrooms ,family = "multinomial")
