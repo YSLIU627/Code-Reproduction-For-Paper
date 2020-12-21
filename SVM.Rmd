@@ -34,52 +34,14 @@ lasso.loss <- function(A,alpha,y) {
 }
 ```
 
-```{r lasso.w_func}
-lasso.w_func <- function(alpha,A,y){
-  #返回w的函数值
-  return(2*(A %*% alpha - y))
-}
-```
-
-```{r lasso.subgrad}
-lasso.subgrad <- function(alpha,lambda,A,dimension,y,...){
-  #返回次梯度
-  i <- dimension
-  n <- length(alpha)
-  #alpha0 <- as.matrix(alpha)
-  # First calculate the subgrad of |alpha|, sub1
-  if (alpha[i] > 0 ){
-    sub1 <- lambda#alpha[i]/norm(alpha0,type = "O")
-  }
-  else if(alpha[i] < 0){
-    sub1 <- -lambda#alpha[i]/norm(alpha0,type = "O")
-  }
-  else {
-    seed <- 0#runif(1,-1,1)
-    sub1 <- lambda*seed #* alpha[i]/norm(alpha0,type = "O")
-  }
-  # Then calculate the grad of ||A\alpha -y||^2
-  #term <- vector(length =length(A[,1]))
-  #for (s in 1:n){
-  #  term <- term + as.vector(alpha[s]*A[,s])
-  #}
-  #sub2 <- t(A[,i]) %*% term + t(term) %*% A[,i] - t(y) %*% A[,i] - t(A[,i])%*% y
-  term <- 2*(A%*%alpha-y)
-  term <- as.vector(term)
-  sub2 <- sum(A[,i]*term)
-  subgrad = sub1 + sub2 #rowSums(sub2)
-  #browser()
-  return(subgrad)
-}
-```
 
 ```{r lasso.gap}
-lasso.gap <- function(alpha,lambda,B,A,dimension,y){
+lasso.gap <- function(alpha,lambda,B,A,dimension,y,w){
   # 计算对偶gap
   # A is a matrix
   i <- dimension
   #browser()
-  w <- lasso.w_func(alpha,A,y)
+  #w <- lasso.w_func(alpha,A,y)
   gap <- B*positive(abs(sum(A[,i]* w))- lambda)+lambda*abs(alpha[i])+alpha[i]*(sum(A[,i]* w))
   #browser()
   return(gap)
@@ -88,13 +50,13 @@ lasso.gap <- function(alpha,lambda,B,A,dimension,y){
 ```
 
 ```{r lasso.dualres}
-lasso.dualres <- function(alpha,lambda,A,dimension,y, B){
+lasso.dualres <- function(alpha,lambda,A,dimension,y, B,w){
   #计算对偶残差
   # first calculate the subgrad of g_i^*
   i <- dimension
   flag <-  0
   eps <- 1e-5
-  w <- lasso.w_func(alpha, A, y)
+  #w <- lasso.w_func(alpha, A, y)
   input <- -t(A[,i])%*%w
   #browser()
   # 这里的g用的是文中修改后的g拔，下面计算次梯度
@@ -142,7 +104,7 @@ p.ada.gap <- function(alpha,lambda,B,A,y){
   n <- length(alpha)
   p <- numeric(length = n)
   for (i in 1:n){
-    p[i] <- lasso.gap(alpha, lambda, B, A, i, y)
+    p[i] <- lasso.gap(alpha, lambda, B, A, i, y,w)
     #browser()
   }
   #browser()
@@ -157,14 +119,14 @@ p.ada.gap <- function(alpha,lambda,B,A,y){
 ###2.2 Adaptive
 
 ```{r p.ada.uniform}
-p.ada.uniform <- function(alpha, lambda, A, y, sigma,B){
+p.ada.uniform <- function(alpha, lambda, A, y, sigma,B,w){
   n <- length(alpha)
   p <- numeric(length = n)
   second_term <- numeric(length = n)
   eps <- 1e-5
   m <- n
   for (i in 1:n){
-    k <- abs(lasso.dualres(alpha, lambda, A, i,y, B))
+    k <- abs(lasso.dualres(alpha, lambda, A, i,y, B,w))
     if( k < eps){
       p[i] <- 0
       m <- m-1
@@ -228,55 +190,40 @@ CD_each_iter <- function(sample_p,A,y,lambda,step0 = 0.1,...)
   epoch <- dim(A)[2]*3
   n <- dim(A)[2]
   alpha <- numeric(n)
+  w <- numeric(length = dim(A)[1])
   max_iter <- epoch*record_length
   record.gap <- numeric(length=record_length)
   record.loss <- numeric(length=record_length)
   gap <- numeric(n)
   # A,y are given data
-  #browser()
-  B <- (norm(A%*%alpha - y,type = "2"))^2/lambda + sum(abs(alpha))
-  w <- lasso.w_func(alpha,A,y)
+  
+  
   iter <- 0
   while(iter < max_iter){
   iter <- iter+1
-  p = sample_p(alpha = alpha,A=A,y=y,lambda=lambda,B=B,...)
+  p = sample_p(alpha = alpha,A=A,y=y,lambda=lambda,B=B,w,...)
   i <- sample(1:n,size = 1,prob = p)
-  #browser()
-  update <- lasso.subgrad(alpha = alpha,dimension =i ,A =A,y=y,lambda = lambda)
-  inverses <- max(2*sum(A[,i]**2),1)
-  #inverses <- 2*sum(A[,i]**2)
-  alpha[i] <- alpha[i] - step0*update/inverses
-  #alpha_ <- alpha - step0*update/inverses
-  #if (lasso.loss(A,alpha_,y) < lasso.loss(A,alpha,y) ){
-  #   alpha <- alpha_ 
-  #   iter <- iter+1
-  #}
-  #if (iter %%10 == 0){
-  #  print("w")
-  #  w <- lasso.w_func(alpha,A,y)
-  #  print(sum(w**2))}
-  #browser()
-  # Record the result
+
+  update <- y[i]* max(0,min(1,y[i]*alpha[i]+(1-y[i]*t(A[,i])%*%w)/(sum(A[,i]**2)/(lambda*n))))
+  
+  alpha[i] <- update
+  
   if(iter%%epoch==0){
     k <- iter/epoch
     for(j in 1:n){
       gap[j] <- lasso.gap(alpha, lambda, B, A, j,y=y)
     }
     record.gap[k] <- sum(gap)
-    #print(lasso.loss(A = A,alpha = alpha,y = y))
+
     record.loss[k] <- lasso.loss(A, alpha, y)
-    #browser()
-    print("gap")
-    print(gap[51])
-    print("loss")
-    print(lasso.dualres(alpha,lambda,A,51,y,B))
+
   }
   }
   result <- list(dual.gap = log(record.gap), suboptimality = log(record.loss),alpha = alpha)
   #browser()
   return (result)
 }
-#CD_each_iter(sample_p = p.uniform,A = A.mushrooms,y = y.mushrooms,lambda = 0.05)
+
 ```
 
 ```{r CD_per_epoch}
