@@ -1,0 +1,395 @@
+---
+title: "Untitled"
+author: "许鑫"
+date: "2020/12/25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r lasso.w_func}
+lasso.w_func <- function(alpha,A,y){
+  return(2*(A %*% alpha - y))
+}
+```
+
+```{r lasso.subgrad}
+lasso.subgrad <- function(alpha,lambda,A,dimension,y,...){
+  #返回次梯度
+  i <- dimension
+  n <- length(alpha)
+  # First calculate the subgrad of |alpha|, sub1
+  if (alpha[i] > 0 ){
+    sub1 <- lambda
+  }
+  else if(alpha[i] < 0){
+    sub1 <- -lambda
+  }
+  else {
+    seed <- 0
+    sub1 <- lambda*seed 
+  }
+  # Then calculate the grad of ||A\alpha -y||^2
+  term <- 2*(A%*%alpha-y)
+  term <- as.vector(term)
+  sub2 <- sum(A[,i]*term)
+  subgrad = sub1 + sub2 
+  return(subgrad)
+}
+```
+
+```{r lasso.gap}
+lasso.gap <- function(alpha,lambda,B,A,dimension,y){
+  # 计算对偶gap
+  i <- dimension
+  w <- lasso.w_func(alpha,A,y)
+  gap <- B*positive(abs(sum(A[,i]* w))- lambda)+lambda*abs(alpha[i])+alpha[i]*(sum(A[,i]* w))
+  return(gap)
+}
+```
+
+```{r lasso.dualres}
+lasso.dualres <- function(alpha,lambda,A,dimension,y, B){
+  i <- dimension
+  flag <-  0
+  eps <- 1e-5
+  w <- lasso.w_func(alpha, A, y)
+  input <- -t(A[,i])%*%w
+  if (input <= -lambda - eps){
+    g_sub <- -B
+  }
+  else if(input >= lambda + eps){
+    g_sub <- B
+  }
+  else if(input > -lambda + eps & input < lambda + eps){
+    g_sub <- 0
+  }
+  else if(input < 0){#g_sub is an interval
+    g_sub_right <- 0
+    g_sub_left  <- -B
+    flag <- 1 
+  }
+  else{
+    g_sub_right <- B
+    g_sub_left  <- 0
+    flag <- 1 
+  }
+  if (flag == 0){
+      return (abs(alpha[i]-g_sub))
+  }
+  if (alpha[i] >= g_sub_left & alpha[i] <= g_sub_right){
+    return (0)
+  }
+  else {
+    return (min(abs(alpha[i]-g_sub_right),abs(alpha[i]-g_sub_left) ))
+  }
+}
+```
+
+```{r svm.loss}
+svm.loss <- function(A,alpha,lambda = 0.1,y) {
+  # 返回loss函数的值
+  n <- dim(A)[2]
+  loss <- (norm(as.matrix(A%*%alpha ),type = "2"))^2/(n^2 * lambda * 2)-sum(alpha*y)/n
+  return (loss)
+}
+```
+
+```{r svm.gap}
+svm.gap <- function(alpha,lambda = 0.1,A,dimension,y,w){
+  # 计算对偶gap
+  i <- dimension
+  n <- dim(A)[2]
+  gap <- positive(1-y[i]*sum(A[,i]*w))/n - alpha[i]*y[i]/n + alpha[i]*sum(A[,i]*w)
+  if(gap<0){
+    return(0)
+  }
+  return(gap)
+}
+
+```
+
+```{r svm.dualres}
+svm.dualres <- function(A,dimension,y,w,alpha){
+  #计算对偶残差
+  i <- dimension
+  n <- dim(A)[2]
+  flag <-  0
+  eps <- 1e-5
+  input <- -t(A[,i])%*%w
+  if (y[i]==1){
+    if (input <= -1 - eps){
+    g_sub <- 0
+   }else if(input >= -1 + eps){
+     g_sub <- 1/n
+   }else{
+    g_sub_right <- 1/n
+    g_sub_left  <- 0
+    flag <- 1 }
+  }else{
+    if (input <= 1 - eps){
+    g_sub <- -1/n
+   }else if(input >= 1 + eps){
+     g_sub <- 0
+   }else{
+    g_sub_right <- 0
+    g_sub_left  <- -1/n
+    flag <- 1 }
+  }
+  if (flag == 0){
+      return (abs(alpha[i]-g_sub))
+  }
+  if (alpha[i] >= g_sub_left & alpha[i] <= g_sub_right){
+    return (0)
+  }
+  else {
+    return (min(abs(alpha[i]-g_sub_right),abs(alpha[i]-g_sub_left) ))
+  }
+}
+
+```
+
+##2.Adaptive Sampling -based CD 
+
+###2.1 Gap-wise
+```{r p.ada.gap}
+p.ada.gap <- function(alpha,lambda,B,A,y){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  for (i in 1:n){
+    p[i] <- lasso.gap(alpha, lambda, B, A, i, y)
+  }
+  psum <- sum(p) 
+  for (i in 1:n){
+    p[i] <- p[i]/psum
+  }
+  return(p)
+}
+```
+
+```{r svm.p.ada.gap}
+svm.p.ada.gap <- function(alpha,lambda = 0.1,A,y,w){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  for (i in 1:n){
+    p[i] <- svm.gap(alpha = alpha, A = A, y = y, dimension = i, w = w)
+    #browser()
+  }
+  #browser()
+  psum <- sum(p) 
+  for (i in 1:n){
+    p[i] <- p[i]/psum
+  }
+  return(p)
+}
+```
+
+###2.2 Adaptive
+
+```{r p.ada.uniform}
+p.ada.uniform <- function(alpha, lambda, A, y, sigma,B){
+  n <- length(alpha)
+  p <- rep(1,n)
+  second_term <- numeric(length = n)
+  eps <- 1e-5
+  m <- n
+  for (i in 1:n){
+    k <- abs(lasso.dualres(alpha, lambda, A, i,y, B))
+    if( k < eps){
+      p[i] <- 0
+      m <- m-1
+    }else{
+      second_term[i] <- k*norm(as.matrix(A[,i]),type ="F")
+    }
+  }
+  second_term <- second_term/sum(second_term)
+  for(i in 1:n){
+    if(p[i]==1){
+      p[i] = sigma/m
+    }
+  }
+  p <- p + second_term*(1-sigma)
+  return(p)
+}
+```
+
+```{r svm.p.ada.uniform}
+svm.p.ada.uniform <- function(alpha,lambda = 0.1,A,y,w, sigma){
+  n <- length(alpha)
+  p <- rep(1,n)
+  second_term <- numeric(length = n)
+  eps <- 1e-5
+  m <- n
+  for (i in 1:n){
+    k <- abs(svm.dualres(A = A, y = y, w = w, dimension = i, alpha = alpha))
+    #browser()
+    if( k < eps){
+      p[i] <- 0
+      m <- m-1
+    }else{
+      second_term[i] <- k*norm(as.matrix(A[,i]),type ="F")
+    }
+    
+    #browser()
+  }
+  second_term <- second_term/sum(second_term)
+  for(i in 1:n){
+    if(p[i]==1){
+      p[i] = sigma/m
+    }
+  }
+ 
+  p <- p + second_term*(1-sigma)
+  
+  #browser()
+  return(p)
+}
+```
+###2.3 Uniform
+
+```{r p.uniform}
+p.uniform <- function(alpha,A,y,lambda,B){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  for (i in 1:n){
+    p[i] <- 1/n
+  }
+  return(p)
+}
+```
+
+```{r svm.p.uniform}
+svm.p.uniform <- function(alpha,lambda = 0.1,A,y,w){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  for (i in 1:n){
+    p[i] <- 1/n
+  }
+  return(p)
+}
+```
+###2.4 Importance Sampling
+
+```{r p.imp}
+p.imp <- function(alpha,A,y,lambda,B){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  for (i in 1:n){
+    p[i] <- norm(as.matrix(A[,i]),type = "F")
+  }
+  p = p/sum(p)
+  return(p)
+}
+```
+
+```{r svm.p.imp}
+svm.p.imp <- function(alpha,lambda = 0.1,A,y,w){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  for (i in 1:n){
+    p[i] <- norm(as.matrix(A[,i]),type = "F")
+  }
+  p = p/sum(p)
+  return(p)
+}
+```
+##3.Coordinate descdent
+
+```{r CD_each_iter}
+CD_each_iter <- function(sample_p,A,y,lambda,step0 = 0.1,...)
+  {
+  record_length <- 25
+  epoch <- dim(A)[2]
+  n <- dim(A)[2]
+  alpha <- numeric(n)
+  max_iter <- epoch*record_length
+  record.gap <- numeric(length=record_length)
+  record.loss <- numeric(length=record_length)
+  gap <- numeric(n)
+  B <- (norm(A%*%alpha - y,type = "2"))^2/lambda + sum(abs(alpha))
+  w <- lasso.w_func(alpha,A,y)
+  iter <- 0
+  while(iter < max_iter){
+  iter <- iter+1
+  i <- sample(1:n,size = 1,prob = sample_p(alpha = alpha,A=A,y=y,lambda=lambda,B=B,...))
+  update <- lasso.subgrad(alpha = alpha,dimension =i ,A =A,y=y,lambda = lambda)
+  inverses <- max(2*sum(A[,i]**2),1)
+  alpha[i] <- alpha[i] - step0*update/inverses
+  if(iter%%epoch==0){
+    k <- iter/epoch
+    for(j in 1:n){
+      gap[j] <- lasso.gap(alpha, lambda, B, A, j,y=y)
+    }
+    record.gap[k] <- sum(gap)
+    record.loss[k] <- lasso.loss(A, alpha, y)
+  }
+  }
+  result <- list(dual.gap = log(record.gap), suboptimality = log(record.loss))
+  return (result)
+}
+```
+
+```{r CD_per_epoch}
+CD_per_epoch <- function(sample_p,A,y,lambda,step0 = 0.1,...)
+  {
+  record_length <- 25
+  epoch <- dim(A)[2]
+  n <- dim(A)[2]
+  alpha <- numeric(n)
+  max_iter <- epoch*record_length
+  record.gap <- numeric(length=record_length)
+  record.loss <- numeric(length=record_length)
+  gap <- numeric(n)
+  # A,y are given data
+  #browser()
+  B <- (norm(A%*%alpha - y,type = "2"))^2/lambda + sum(abs(alpha))
+  w <- lasso.w_func(alpha,A,y)
+  iter <- 0
+  p <- sample_p(alpha = alpha, A = A, y = y, lambda = lambda, B = B, ...)
+  while(iter < max_iter){
+  iter <- iter+1
+  i <- sample(1:n,size = 1,prob = p)
+  update <- lasso.subgrad(alpha = alpha,dimension =i ,A =A,y=y,lambda = lambda)
+  inverses <- max(2*sum(A[,i]**2),1)
+  #inverses <- 2*sum(A[,i]**2)
+  alpha[i] <- alpha[i] - step0*update/inverses
+  #browser()
+  # Record the result
+  if(iter%%epoch==0){
+    k <- iter/epoch
+    for(j in 1:n){
+      gap[j] <- lasso.gap(alpha, lambda, B, A, j,y=y)
+    }
+    record.gap[k] <- sum(gap)
+    #print(lasso.loss(A = A,alpha = alpha,y = y))
+    record.loss[k] <- lasso.loss(A, alpha, y)
+    p <- sample_p(alpha = alpha, A = A, y = y, lambda = lambda, B = B, ...)
+    #browser()
+  }
+  }
+  result <- list(dual.gap = log(record.gap), suboptimality = log(record.loss))
+  #browser()
+  return (result)
+}
+```
+
+```{r intial gap and loss of mushrooms}
+B <- (norm(y.mushrooms,type = "2"))^2/0.05
+gap0 <- 0
+for (i in 1:112){
+  gap0 <- gap0 + lasso.gap(numeric(112),0.05,B,A.mushrooms,i,y.mushrooms)}
+gap0 <- log(gap0)
+cat("B is",B, "\nlog of dual gap is",gap0)
+```
+
+```{r intial gap and loss of rcv1}
+B <- (norm(y.rcv1,type = "2"))^2/7e-4
+gap0 <- 0
+for (i in 1:dim(A.rcv1)[2]){
+  gap0 <- gap0 + lasso.gap(numeric(dim(A.rcv1)[2]),7e-4,B,A.rcv1,i,y.rcv1)}
+gap0 <- log(gap0)
+cat("B is",B, "\nlog of dual gap is",gap0)
+```

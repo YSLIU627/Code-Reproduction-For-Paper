@@ -1,0 +1,96 @@
+---
+title: "Untitled"
+author: "许鑫"
+date: "2020/12/22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+z_func <- function(A, alpha, y, L){
+  z = alpha - 2*as.vector(t(A)%*%(A%*%alpha-y))/L
+  return(z)
+}
+```
+
+
+```{r CD_each_iter}
+CD_each_iter1 <- function(sample_p,A,y,lambda,step0 = 0.1,alpha,...)
+  {
+  record_length <- 25
+  epoch <- dim(A)[2]
+  n <- dim(A)[2]
+  #alpha <- numeric(n)
+  max_iter <- epoch*record_length
+  record.gap <- numeric(length=record_length)
+  record.loss <- numeric(length=record_length)
+  gap <- numeric(n)
+  # A,y are given data
+  #browser()
+  B <- (norm(A%*%alpha - y,type = "2"))^2/lambda + sum(abs(alpha))
+  w <- lasso.w_func(alpha,A,y)
+  
+  aug <- apply(t(A)%*%A,2, function(x) sum(x^2))
+  L = aug[which.max(aug)]*4
+  
+  iter <- 0
+  while(iter < max_iter){
+  iter <- iter+1
+  i <- sample(1:n,size = 1,prob = sample_p(alpha = alpha,A=A,y=y,lambda=lambda,B=B,...))
+  
+  #update <- lasso.subgrad(alpha = alpha,dimension =i ,A =A,y=y,lambda = lambda)
+  #inverses <- max(2*sum(A[,i]**2),1)
+  #inverses <- 2*sum(A[,i]**2)
+  #alpha[i] <- alpha[i] - step0*update/inverses
+  #alpha_ <- alpha - step0*update/inverses
+  #if (lasso.loss(A,alpha_,y) < lasso.loss(A,alpha,y) ){
+  #   alpha <- alpha_ 
+  #   iter <- iter+1
+  #}
+  #if (iter %%10 == 0){
+  #  print("w")
+  #  w <- lasso.w_func(alpha,A,y)
+  #  print(sum(w**2))}
+  #browser()
+  # Record the result
+  z <- z_func(A,alpha,y,L)
+  if(z[i]>lambda/L){
+    alpha[i]<-z[i]-1e8*lambda/L
+  }else if(z[i]< -lambda/L){
+    alpha[i]<-z[i]+1e8*lambda/L
+  }else{
+    alpha[i] <- 0
+  }
+  
+  #browser()
+  
+  if(iter%%epoch==0){
+    k <- iter/epoch
+    for(j in 1:n){
+      gap[j] <- lasso.gap(alpha, lambda, B, A, j,y=y)
+    }
+    record.gap[k] <- sum(gap)
+    #print(lasso.loss(A = A,alpha = alpha,y = y))
+    record.loss[k] <- lasso.loss(A, alpha, y)
+    #browser()
+  }
+  }
+  result <- list(dual.gap = log(record.gap), suboptimality = log(record.loss), alpha = alpha)
+  #browser()
+  return (result)
+}
+#CD_each_iter(sample_p = p.uniform,A = A.mushrooms,y = y.mushrooms,lambda = 0.05)
+```
+
+```{r}
+ind <- which(y.mushrooms == 2)
+y.m1 <- numeric(length(y.mushrooms))
+y.m1[-ind] <- y.mushrooms[-ind]
+```
+```{r}
+init <- CD_each_iter1(sample_p = p.uniform,A = A.mushrooms,y = y.m1,lambda = 0.05,step0 = 1,alpha = numeric(112))$alpha
+init <- CD_each_iter1(sample_p = p.uniform,A = A.mushrooms,y = y.m1,lambda = 0.05,step0 = 1,alpha = init)$alpha
+```

@@ -1,0 +1,320 @@
+---
+title: "homework"
+author: "LZH-XX"
+date: "12/5/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##1. The optimization target and their dual gap and dual residual
+
+```{r svm.loss}
+svm.loss <- function(A,alpha,lambda = 0.1,y) {
+  # 返回loss函数的值
+  n <- dim(A)[2]
+  #browser()
+  loss <- (norm(as.matrix(A%*%alpha ),type = "2"))^2/(n^2 * lambda * 2)-sum(alpha*y)/n
+  #browser()
+  return (loss)
+}
+```
+
+
+```{r svm.gap}
+svm.gap <- function(alpha,lambda = 0.1,A,dimension,y,w){
+  # 计算对偶gap
+  # A is a matrix
+  i <- dimension
+  n <- dim(A)[2]
+  #browser()
+  #w <- lasso.w_func(alpha,A,y)
+  gap <- positive(1-y[i]*sum(A[,i]*w))/n - alpha[i]*y[i]/n + alpha[i]*sum(A[,i]*w)
+  #browser()
+  if(gap < 0){
+     return(0)
+  }
+  return(gap)
+}
+
+```
+
+```{r svm.dualres}
+svm.dualres <- function(A,dimension,y,w,alpha){
+  #计算对偶残差
+
+  i <- dimension
+  n <- dim(A)[2]
+  flag <-  0
+  eps <- 1e-5
+  input <- -t(A[,i])%*%w
+  #browser()
+  if (y[i]==1){
+    if (input <= -1 - eps){
+    g_sub <- 0
+   }else if(input >= -1 + eps){
+     g_sub <- 1/n
+   }else{
+    g_sub_right <- 1/n
+    g_sub_left  <- 0
+    flag <- 1 
+    #g_sub is an interval
+  }
+  }else{
+    if (input <= 1 - eps){
+    g_sub <- -1/n
+   }else if(input >= 1 + eps){
+     g_sub <- 0
+   }else{
+    g_sub_right <- 0
+    g_sub_left  <- -1/n
+    flag <- 1 
+    #g_sub is an interval
+  }
+  }
+  #browser()
+  # When flag ==0 ,subgrad is grad, otherwise is a interval
+  if (flag == 0){
+      return (abs(alpha[i]-g_sub))
+  }
+  #  subgrad is a interval
+  if (alpha[i] >= g_sub_left & alpha[i] <= g_sub_right){
+    return (0)
+  }
+  else {
+    return (min(abs(alpha[i]-g_sub_right),abs(alpha[i]-g_sub_left) ))
+    # Return the closet distance from the interval
+  }
+}
+
+```
+##2.Adaptive Sampling -based CD 
+
+###2.1 Gap-wise
+```{r svm.p.ada.gap}
+svm.p.ada.gap <- function(alpha,lambda = 0.1,A,y,w){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  for (i in 1:n){
+    p[i] <- svm.gap(alpha = alpha, A = A, y = y, dimension = i, w = w)
+    #browser()
+  }
+  #browser()
+  psum <- sum(p) 
+  for (i in 1:n){
+    p[i] <- p[i]/psum
+  }
+  return(p)
+}
+```
+
+###2.2 Adaptive
+
+```{r svm.p.ada.uniform}
+svm.p.ada.uniform <- function(alpha,lambda = 0.1,A,y,w, sigma){
+  n <- length(alpha)
+  p <- rep(1,n)
+  second_term <- numeric(length = n)
+  eps <- 1e-5
+  m <- n
+  for (i in 1:n){
+    k <- abs(svm.dualres(A = A, y = y, w = w, dimension = i, alpha = alpha))
+    #browser()
+    if( k < eps){
+      p[i] <- 0
+      m <- m-1
+    }else{
+      second_term[i] <- k*norm(as.matrix(A[,i]),type ="F")
+    }
+    
+    #browser()
+  }
+  second_term <- second_term/sum(second_term)
+  for(i in 1:n){
+    if(p[i]==1){
+      p[i] = sigma/m
+    }
+  }
+ 
+  p <- p + second_term*(1-sigma)
+  
+  #browser()
+  return(p)
+}
+```
+
+
+###2.3 Uniform
+
+```{r svm.p.uniform}
+svm.p.uniform <- function(alpha,lambda = 0.1,A,y,w){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  for (i in 1:n){
+    p[i] <- 1/n
+  }
+  return(p)
+}
+```
+
+###2.4 Importance Sampling
+
+```{r svm.p.imp}
+svm.p.imp <- function(alpha,lambda = 0.1,A,y,w){
+  n <- length(alpha)
+  p <- numeric(length = n)
+  for (i in 1:n){
+    p[i] <- norm(as.matrix(A[,i]),type = "F")
+  }
+  p = p/sum(p)
+  return(p)
+}
+```
+
+
+##3.Coordinate descdent
+
+```{r svm_CD_each_iter}
+svm_CD_each_iter <- function(sample_p,A,y,lambda = 0.1,step0 = 0.1,...)
+  {
+  record_length <- 10
+  epoch <- dim(A)[2]
+  n <- dim(A)[2]
+  #alpha <- numeric(n)
+  #w <- numeric(length = dim(A)[1])
+  alpha <- rep(1,n)
+  w <- A%*%alpha/lambda/n^2
+  max_iter <- epoch*record_length
+  record.gap <- numeric(length=record_length)
+  record.loss <- numeric(length=record_length)
+  gap <- numeric(n)
+  # A,y are given data
+  
+  
+  iter <- 0
+  while(iter < max_iter){
+  
+  iter <- iter+1
+  #browser()
+  
+  p = sample_p(alpha = alpha,A=A,y=y,lambda=lambda,w = w,...)
+  
+  #browser()
+  i <- sample(1:n,size = 1,prob = p)
+  #update <- y[i]*max(0,min(1,y[i]*alpha[i]+(1-y[i]*sum(A[,i]*w))/(sum(A[,i]**2)/(lambda*n)))) - alpha[i]
+  #alpha[i] <- update +alpha[i]
+  #w <- w + A[,i]*update/(lambda*n)
+  grad <- -y[i]/n + sum(as.vector(A%*%alpha)*A[,i])/lambda/(n^2)
+  alpha[i] <- alpha[i]- step0*grad
+  w <- A%*%alpha/lambda/n^2
+  
+  #browser()
+  if(iter%%epoch==0){
+    k <- iter/epoch
+    for(j in 1:n){
+      gap[j] <- svm.gap(alpha = alpha, A = A, y = y, dimension = j, w = w, lambda = lambda)
+    }
+    record.gap[k] <- sum(gap)
+
+    record.loss[k] <- svm.loss(A, alpha, lambda,y)
+    #browser()
+  }
+  
+  }
+  result <- list(dual.gap = log(record.gap), svm = record.loss)
+  #browser()
+  return (result)
+}
+
+```
+
+```{r svm_CD_per_epoch}
+svm_CD_per_epoch <- function(sample_p,A,y,lambda = 0.1,step0 = 0.1,...)
+  {
+  record_length <- 10
+  epoch <- dim(A)[2]
+  n <- dim(A)[2]
+  #alpha <- numeric(n)
+  #w <- numeric(length = dim(A)[1])
+  alpha <- rep(1,n)
+  w <- A%*%alpha/lambda/n^2
+  max_iter <- epoch*record_length
+  record.gap <- numeric(length=record_length)
+  record.loss <- numeric(length=record_length)
+  gap <- numeric(n)
+  # A,y are given data
+  
+  p = sample_p(alpha = alpha,A=A,y=y,lambda=lambda,w = w,...)
+  iter <- 0
+  while(iter < max_iter){
+  iter <- iter+1
+  i <- sample(1:n,size = 1,prob = p)
+  #update <- y[i]*max(0,min(1,y[i]*alpha[i]+(1-y[i]*sum(A[,i]*w))/(sum(A[,i]**2)/(lambda*n)))) - alpha[i]
+  #alpha[i] <- update +alpha[i]
+  #w <- w + A[,i]*update/(lambda*n)
+  grad <- -y[i]/n + sum(as.vector(A%*%alpha)*A[,i])/lambda/(n^2)
+  alpha[i] <- alpha[i]- step0*grad
+  w <- A%*%alpha/lambda/n^2
+  #browser()
+  if(iter%%epoch==0){
+    k <- iter/epoch
+    for(j in 1:n){
+      gap[j] <- svm.gap(alpha = alpha, A = A, y = y, dimension = j, w = w, lambda = lambda)
+    }
+    record.gap[k] <- sum(gap)
+
+    record.loss[k] <- svm.loss(A, alpha, lambda,y)
+    #browser()
+    p = sample_p(alpha = alpha,A=A,y=y,lambda=lambda,w = w,...)
+  }
+  
+  }
+  result <- list(dual.gap = log(record.gap), svm = record.loss)
+  #browser()
+  return (result)
+}
+
+```
+
+##4.Exmperiment
+```{r}
+svm_CD_per_epoch(svm.p.ada.gap,A.ionosphere,y.ionosphere, step0 = 30)
+```
+```{r svm_save_result}
+svm_save_result <- function(CD, name, ...){
+  result.gap <- matrix(0,nrow = 5, ncol = 10)
+  result.loss <- matrix(0, nrow = 5, ncol = 10)
+  for (i in 1:5){
+    result <- CD(...)
+   result.gap[i,] <- result$dual.gap
+   result.loss[i,] <- result$svm
+  }
+  name1 <- paste0("svm/", name, "_gap.csv")
+  name2 <- paste0("svm/", name, "_loss.csv")
+  write.csv(as.data.frame(result.gap),file = name1)
+  write.csv(as.data.frame(result.loss),file = name2)
+}
+```
+
+```{r ionosphere result eval=FALSE}
+svm_save_result(svm_CD_each_iter, "uni", sample_p = svm.p.uniform,A = A.ionosphere,y = y.ionosphere,step0 = 30)
+
+svm_save_result(svm_CD_each_iter, "ssuni", sample_p = svm.p.ada.uniform,A = A.ionosphere,y = y.ionosphere,step0 = 30, sigma = 1)
+
+svm_save_result(svm_CD_each_iter, "adative", sample_p = svm.p.ada.uniform,A = A.ionosphere,y = y.ionosphere,step0 = 30, sigma = 0)
+
+svm_save_result(svm_CD_each_iter, "adauni", sample_p = svm.p.ada.uniform,A = A.ionosphere,y = y.ionosphere,step0 = 30, sigma = 0.5)
+
+svm_save_result(svm_CD_each_iter, "imp", sample_p = svm.p.imp,A = A.ionosphere,y = y.ionosphere,step0 = 30)
+
+svm_save_result(svm_CD_each_iter, "adagap", sample_p = svm.p.ada.gap,A = A.ionosphere,y = y.ionosphere,step0 = 30)
+
+svm_save_result(svm_CD_per_epoch, "epoch_uni", sample_p = svm.p.uniform,A = A.ionosphere,y = y.ionosphere,step0 = 30)
+
+svm_save_result(svm_CD_per_epoch, "epoch_imp", sample_p = svm.p.imp,A = A.ionosphere,y = y.ionosphere,step0 = 30)
+
+svm_save_result(svm_CD_per_epoch, "epoch_adagap", sample_p = svm.p.ada.gap,A = A.ionosphere,y = y.ionosphere,step0 = 30)
+```
+
